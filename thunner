@@ -43,6 +43,11 @@ from gmusicapi import Mobileclient
 from getpass import getpass
 from operator import itemgetter
 
+# hack to remove the warnings stuff from urllib3 since gmusic uses https
+# Remove when gmusic api gets updated to resolve this error
+import requests.packages.urllib3
+requests.packages.urllib3.disable_warnings()
+
 def parse_config():
     defaultcolors = { 'thunner':'default',
                       'header-text':'default',
@@ -142,7 +147,7 @@ def drawline(scr, y, width, slen, cs):
     col = cs[1]
     scr.addnstr(y, 0, s, width, curses.color_pair(col))
     scr.addstr(y, slen, " " * (width - slen), curses.color_pair(col))
-    
+
 def header(scr, width, parents, current, code, colors, colormap):
     locstring = [('thunner', 'thunner')]
 
@@ -207,8 +212,9 @@ def stop(p):
 
 def play(song):
     with open(os.devnull, 'w') as temp:
-        proc =  subprocess.Popen(["mplayer", "-noconfig", "all", "%s" % song], stdin=subprocess.PIPE, stdout=temp, stderr=temp)
-        return proc
+        wget_proc = subprocess.Popen(["wget", "-qO-", song], stdout=subprocess.PIPE,stderr=temp)
+        mplayer_proc =  subprocess.Popen(["mplayer", "-"], stdin=wget_proc.stdout, stdout=temp, stderr=temp)
+        return (mplayer_proc,wget_proc)
 
 def collect(tree, l, c_item):
     n = 0
@@ -249,7 +255,7 @@ def gen_trees(library):
                                       "subtree":sorted(tracks, key=itemgetter('trackNumber')),
                                       "subtreeline":0 })
         albums.extend(albums_of_artist)
-        artists.append({ "name":artist, 
+        artists.append({ "name":artist,
                          "subtree":sorted(albums_of_artist, key=lambda x: x['name'].lower()),
                          "subtreeline":0 })
     return sorted(artists, key=lambda x: x['name'].lower()), sorted(albums, key=lambda x: x['name'].lower())
@@ -276,7 +282,7 @@ def switch_menu(menu):
     new_list = menu["subtree"]
     new_item = menu["subtreeline"]
     return menu, new_list, new_item
-        
+
 def main():
 
     config = parse_config()
@@ -292,6 +298,7 @@ def main():
 
     api = None
     playing = None
+    wget = None
     try:
         height, width = scr.getmaxyx()
 
@@ -300,7 +307,7 @@ def main():
         scr.refresh()
 
         api = apiinit(config['email'], config['pass'])
-        
+
         if not api.is_authenticated():
             print "Credentials were not accepted. Exiting..."
             return
@@ -313,9 +320,9 @@ def main():
         scr.clear()
         now_playing = {"name":"Now Playing", "subtree":[], "subtreeline":0 }
         toplevel = { "name":"Toplevel",
-                     "subtree":[ {"name":"Artists", "subtree":artists, "subtreeline":0 }, 
-                                 {"name":"Albums", "subtree":albums, "subtreeline":0 }, 
-                                 {"name":"Songs", "subtree":library, "subtreeline":0 }, 
+                     "subtree":[ {"name":"Artists", "subtree":artists, "subtreeline":0 },
+                                 {"name":"Albums", "subtree":albums, "subtreeline":0 },
+                                 {"name":"Songs", "subtree":library, "subtreeline":0 },
                                  #{"name":"Playlists", "subtree":playlists, "subtreeline":0 },
                                  now_playing],
                      "subtreeline":0 }
@@ -323,15 +330,15 @@ def main():
         c_menu = toplevel
         c_list = c_menu["subtree"]
         c_item = c_menu["subtreeline"]
-        
+
         previous = []
-        
+
         timeout = 150 # getch timeout in ms
 
         header_height = 2
         footer_height = 2
         viewheight = height-header_height-footer_height
-        
+
         play_queue = []
         play_index = 0
         unplayed_indices = []
@@ -362,16 +369,18 @@ def main():
                     else:
                         play_index = (play_index + 1) % len(play_queue)
                     current_song = play_queue[play_index]
-                    playing = play(api.get_stream_url(current_song['id'], config['deviceid']))
+                    (playing,wget) = play(api.get_stream_url(current_song['id'], config['deviceid']))
                     try:
                         unplayed_indices.remove(play_index)
                     except: #don't care if its not in there
                         pass
                 else:
                     redraw = False #Nothing is going on, why redraw?
-            elif c == ord('q'): 
+            elif c == ord('q'):
                 if isinstance(playing, subprocess.Popen):
                     playing.terminate()
+                    wget.terminate()
+                    wget = None
                     playing = None
                     break
                 else:
@@ -380,6 +389,8 @@ def main():
                 if c_list:
                     if isinstance(playing, subprocess.Popen):
                         playing.terminate()
+                        wget.terminate()
+                        wget = None
                         play_queue = []
                         playing = None
                         unplayed_indices = []
@@ -396,7 +407,7 @@ def main():
                     if play_queue != [] and play_index < len(play_queue):
                         current_song = play_queue[play_index]
                         status = 'Playing:'
-                        playing = play(api.get_stream_url(current_song['id'], config['deviceid']))
+                        (playing,wget) = play(api.get_stream_url(current_song['id'], config['deviceid']))
                         unplayed_indices = range(len(play_queue))
                         unplayed_indices.remove(play_index)
                     else:
@@ -407,18 +418,20 @@ def main():
             elif c == ord('.'):
                 if isinstance(playing, subprocess.Popen):
                     playing.terminate()
+                    wget.terminate()
                     play_index = (play_index + 1) % len(play_queue)
                     current_song = play_queue[play_index]
-                    playing = play(api.get_stream_url(current_song['id'], config['deviceid']))
+                    (playing,wget) = play(api.get_stream_url(current_song['id'], config['deviceid']))
                     status = 'Playing:'
                     if play_index in unplayed_indices:
                         unplayed_indices.remove(play_index)
             elif c == ord(','):
                 if isinstance(playing, subprocess.Popen):
                     playing.terminate()
+                    wget.terminate()
                     play_index = (play_index - 1) % len(play_queue)
                     current_song = play_queue[play_index]
-                    playing = play(api.get_stream_url(current_song['id'], config['deviceid']))
+                    (playing,wget) = play(api.get_stream_url(current_song['id'], config['deviceid']))
                     current_song = song
                     status = 'Playing:'
                     if play_index in unplayed_indices:
@@ -432,7 +445,7 @@ def main():
                 if c_list and "subtree" in c_list[c_item]:
                     previous.append(c_menu)
                     c_menu, c_list, c_item = switch_menu(c_list[c_item])
-            elif c == curses.KEY_DOWN: 
+            elif c == curses.KEY_DOWN:
                 if c_item < len(c_list)-1:
                     c_item += 1
                 else:
@@ -487,6 +500,7 @@ def main():
         scrrelease(scr)
         if isinstance(playing, subprocess.Popen) and playing.poll() == None:
             playing.terminate()
+            wget.terminate()
         if api:
             api.logout()
     return

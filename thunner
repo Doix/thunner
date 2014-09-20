@@ -438,20 +438,20 @@ def main():
                         unplayed_indices.remove(play_index)
             elif c == ord('r'):
                 is_random = not is_random
-            elif c == curses.KEY_LEFT:
+            elif c == curses.KEY_LEFT or c == ord('h'):
                 if previous:
                     c_menu, c_list, c_item = switch_menu(previous.pop())
-            elif c == curses.KEY_RIGHT:
+            elif c == curses.KEY_RIGHT or c == ord('l'):
                 if c_list and "subtree" in c_list[c_item]:
                     previous.append(c_menu)
                     c_menu, c_list, c_item = switch_menu(c_list[c_item])
-            elif c == curses.KEY_DOWN:
+            elif c == curses.KEY_DOWN or c == ord('j'):
                 if c_item < len(c_list)-1:
                     c_item += 1
                 else:
                     c_item = 0
                 c_menu["subtreeline"] = c_item
-            elif c == curses.KEY_UP:
+            elif c == curses.KEY_UP or c == ord('k'):
                 if c_item > 0:
                     c_item -= 1
                 else:

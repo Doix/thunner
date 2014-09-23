@@ -148,7 +148,7 @@ def drawline(scr, y, width, slen, cs):
     scr.addnstr(y, 0, s, width, curses.color_pair(col))
     scr.addstr(y, slen, " " * (width - slen), curses.color_pair(col))
 
-def header(scr, width, parents, current, code, colors, colormap):
+def header(scr, width, parents, current, code, colors, colormap, is_random):
     locstring = [('thunner', 'thunner')]
 
     for i in parents[1:]:
@@ -157,7 +157,19 @@ def header(scr, width, parents, current, code, colors, colormap):
     if parents:
         locstring.append((' > ', 'header-sep'))
         locstring.append((current['name'], 'header-text'))
+
+    shuffle = []
+
+    shuffle.append(('Shuffle: ', 'header-text'))
+    if is_random:
+        shuffle_str = 'on'
+    else:
+        shuffle_str = 'off'
+    shuffle.append((shuffle_str, 'header-text'))
+
     drawstring(scr, 0, 0, width, locstring, code, colors, colormap)
+#The -12 comes from the length of "Shuffle: " + "off".
+    drawstring(scr, 0, width-12, width, shuffle, code, colors, colormap)
     for i in range(0, width):
         scr.addch(1, i, curses.ACS_HLINE, curses.color_pair(colors[colormap['header-border']]))
 
@@ -348,7 +360,7 @@ def main():
         current_song = None
 
         scr.erase()
-        header(scr, width, previous, c_menu, code, colors, colormap)
+        header(scr, width, previous, c_menu, code, colors, colormap,is_random)
         footer(scr, height, width, [(status, 'status')], code, colors, colormap)
         drawlist(scr, viewheight, width, header_height, c_list, c_item, code, colors, colormap)
         scr.timeout(timeout)
@@ -419,7 +431,10 @@ def main():
                 if isinstance(playing, subprocess.Popen):
                     playing.terminate()
                     wget.terminate()
-                    play_index = (play_index + 1) % len(play_queue)
+                    if is_random:
+                        play_index = random.choice(unplayed_indices)
+                    else:
+                        play_index = (play_index + 1) % len(play_queue)
                     current_song = play_queue[play_index]
                     (playing,wget) = play(api.get_stream_url(current_song['id'], config['deviceid']))
                     status = 'Playing:'
@@ -481,7 +496,7 @@ def main():
             # Redraw the screen
             if redraw:
                 scr.erase()
-                header(scr, width, previous, c_menu, code, colors, colormap)
+                header(scr, width, previous, c_menu, code, colors, colormap,is_random)
                 if current_song == None:
                     footer(scr, height, width, [(status, 'status')], code, colors, colormap)
                 else:

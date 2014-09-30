@@ -273,12 +273,27 @@ def gen_trees(library):
     return sorted(artists, key=lambda x: x['name'].lower()), sorted(albums, key=lambda x: x['name'].lower())
 
 def list_playlists(api, playlist_list):
-    #TODO: Fix this
     playlists = []
     for playlist in playlist_list:
-        for track in playlist['track']:
-            playlists.append( { "name":playlist['name'], "subtree":api.get_playlist_songs(pid), "subtreeline":0 } )
+        tracks_temp = []
+        for track in playlist['tracks']:
+            tracks_temp.append(track['track'])
+        playlists.append( { "name":playlist['name'], "subtree":tracks_temp, "subtreeline":0 } )
+    subscribed_to = [p for p in api.get_all_playlists() if p.get('type') == 'SHARED']
+    return playlists + get_sub_playlists(api,subscribed_to)
+
+
+def get_sub_playlists(api, playlist_list):
+    playlists = []
+    for playlist in playlist_list:
+        tracks_temp = []
+        share_tok = playlist['shareToken']
+        tracks = api.get_shared_playlist_contents(share_tok)
+        for track in tracks:
+            tracks_temp.append(track['track'])
+        playlists.append( { "name":playlist['name'], "subtree":tracks_temp, "subtreeline":0 } )
     return playlists
+
 
 def headphones(scr, height, code):
     try:
@@ -327,7 +342,8 @@ def main():
         library = api.get_all_songs()
         artists, albums = gen_trees(library)
 
-        #playlists = list_playlists(api, api.get_all_user_playlist_contents())
+        playlists = list_playlists(api, api.get_all_user_playlist_contents())
+
 
         scr.clear()
         now_playing = {"name":"Now Playing", "subtree":[], "subtreeline":0 }
@@ -335,7 +351,7 @@ def main():
                      "subtree":[ {"name":"Artists", "subtree":artists, "subtreeline":0 },
                                  {"name":"Albums", "subtree":albums, "subtreeline":0 },
                                  {"name":"Songs", "subtree":library, "subtreeline":0 },
-                                 #{"name":"Playlists", "subtree":playlists, "subtreeline":0 },
+                                 {"name":"Playlists", "subtree":playlists, "subtreeline":0 },
                                  now_playing],
                      "subtreeline":0 }
 
@@ -381,7 +397,10 @@ def main():
                     else:
                         play_index = (play_index + 1) % len(play_queue)
                     current_song = play_queue[play_index]
-                    (playing,wget) = play(api.get_stream_url(current_song['id'], config['deviceid']))
+                    if 'id' in current_song:
+                        (playing,wget) = play(api.get_stream_url(current_song['id'], config['deviceid']))
+                    else:
+                        (playing,wget) = play(api.get_stream_url(current_song['storeId'], config['deviceid']))
                     try:
                         unplayed_indices.remove(play_index)
                     except: #don't care if its not in there
@@ -419,7 +438,10 @@ def main():
                     if play_queue != [] and play_index < len(play_queue):
                         current_song = play_queue[play_index]
                         status = 'Playing:'
-                        (playing,wget) = play(api.get_stream_url(current_song['id'], config['deviceid']))
+                        if 'id' in current_song:
+                            (playing,wget) = play(api.get_stream_url(current_song['id'], config['deviceid']))
+                        else:
+                            (playing,wget) = play(api.get_stream_url(current_song['storeId'], config['deviceid']))
                         unplayed_indices = range(len(play_queue))
                         unplayed_indices.remove(play_index)
                     else:
@@ -436,7 +458,10 @@ def main():
                     else:
                         play_index = (play_index + 1) % len(play_queue)
                     current_song = play_queue[play_index]
-                    (playing,wget) = play(api.get_stream_url(current_song['id'], config['deviceid']))
+                    if 'id' in current_song:
+                        (playing,wget) = play(api.get_stream_url(current_song['id'], config['deviceid']))
+                    else:
+                        (playing,wget) = play(api.get_stream_url(current_song['storeId'], config['deviceid']))
                     status = 'Playing:'
                     if play_index in unplayed_indices:
                         unplayed_indices.remove(play_index)
@@ -446,7 +471,10 @@ def main():
                     wget.terminate()
                     play_index = (play_index - 1) % len(play_queue)
                     current_song = play_queue[play_index]
-                    (playing,wget) = play(api.get_stream_url(current_song['id'], config['deviceid']))
+                    if 'id' in current_song:
+                        (playing,wget) = play(api.get_stream_url(current_song['id'], config['deviceid']))
+                    else:
+                        (playing,wget) = play(api.get_stream_url(current_song['storeId'], config['deviceid']))
                     current_song = song
                     status = 'Playing:'
                     if play_index in unplayed_indices:
